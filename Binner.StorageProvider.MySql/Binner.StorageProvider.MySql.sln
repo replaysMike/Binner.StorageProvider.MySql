@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.32014.148
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Binner.StorageProvider.MySql", "Binner.StorageProvider.MySql\Binner.StorageProvider.MySql.csproj", "{44264D9F-5FB4-4F46-B2E6-37DE3F5B8BAD}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{44264D9F-5FB4-4F46-B2E6-37DE3F5B8BAD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{44264D9F-5FB4-4F46-B2E6-37DE3F5B8BAD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{44264D9F-5FB4-4F46-B2E6-37DE3F5B8BAD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{44264D9F-5FB4-4F46-B2E6-37DE3F5B8BAD}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {006712F2-29AA-4E07-8DB3-1586D4E7A811}
+	EndGlobalSection
+EndGlobal
