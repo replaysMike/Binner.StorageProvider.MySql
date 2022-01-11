@@ -11,7 +11,7 @@
     <RepositoryUrl>https://github.com/replaysMike/Binner.StorageProvider.MySql</RepositoryUrl>
     <PackageTags>binner storage provider mysql mariadb maria refactor michael brown</PackageTags>
     <PackageReleaseNotes>MySql storage provider for Binner</PackageReleaseNotes>
-    <Version>1.0.0</Version>
+    <Version>1.0.2</Version>
     <PackageLicenseExpression>AGPL-3.0-or-later</PackageLicenseExpression>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
@@ -25,7 +25,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Binner.Model.Common" Version="1.0.4" />
+    <PackageReference Include="Binner.Model.Common" Version="1.0.5" />
     <PackageReference Include="MySql.Data" Version="8.0.27" />
     <PackageReference Include="TypeSupport" Version="1.1.12" />
   </ItemGroup>

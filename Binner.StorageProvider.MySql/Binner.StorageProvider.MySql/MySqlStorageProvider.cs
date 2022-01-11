@@ -12,7 +12,7 @@ namespace Binner.StorageProvider.MySql
     /// </summary>
     public class MySqlStorageProvider : IStorageProvider
     {
-        public const string ProviderName = "SqlServer";
+        public const string ProviderName = "MySql";
 
         private readonly MySqlStorageConfiguration _config;
         private bool _isDisposed;
@@ -20,7 +20,16 @@ namespace Binner.StorageProvider.MySql
         public MySqlStorageProvider(IDictionary<string, string> config)
         {
             _config = new MySqlStorageConfiguration(config);
-            Task.Run(async () => await GenerateDatabaseIfNotExistsAsync<IBinnerDb>()).GetAwaiter().GetResult();
+            try
+            {
+                GenerateDatabaseIfNotExistsAsync<IBinnerDb>()
+                    .GetAwaiter()
+                    .GetResult();
+            }
+            catch (Exception ex)
+            {
+                throw new StorageProviderException(nameof(MySqlStorageProvider), $"Failed to generate database! {ex.GetType().Name} = {ex.Message}", ex);
+            }
         }
 
         /// <summary>
@@ -60,7 +69,7 @@ namespace Binner.StorageProvider.MySql
         {
             var offsetRecords = (request.Page - 1) * request.Results;
             var sortDirection = request.Direction == SortDirection.Ascending ? "ASC" : "DESC";
-            var query = 
+            var query =
 $@"SELECT * FROM Parts 
 WHERE Quantity <= LowStockThreshold AND (@UserId IS NULL OR UserId = @UserId)
 ORDER BY 
@@ -137,7 +146,7 @@ VALUES(@Name, @Description, @Location, @Color, @UserId, @DateCreatedUtc);
         public async Task<ICollection<SearchResult<Part>>> FindPartsAsync(string keywords, IUserContext userContext)
         {
             // basic ranked search by Michael Brown :)
-            var query = 
+            var query =
 $@"WITH PartsExactMatch (PartId, Rank) AS
 (
 SELECT PartId, 10 as Rank FROM Parts WHERE (@UserId IS NULL OR UserId = @UserId) AND 
@@ -289,8 +298,8 @@ VALUES (@ParentPartTypeId, @Name, @UserId, @DateCreatedUtc);";
             {
                 binFilter = $" AND {request.By} = '{request.Value}'";
             }
-            
-            var query = 
+
+            var query =
 $@"SELECT * FROM Parts 
 WHERE (@UserId IS NULL OR UserId = @UserId) {binFilter}
 ORDER BY 
@@ -353,7 +362,7 @@ OFFSET {offsetRecords} ROWS FETCH NEXT {request.Results} ROWS ONLY;";
         {
             var offsetRecords = (request.Page - 1) * request.Results;
             var sortDirection = request.Direction == SortDirection.Ascending ? "ASC" : "DESC";
-            var query = 
+            var query =
 $@"SELECT * FROM Projects 
 WHERE (@UserId IS NULL OR UserId = @UserId) 
 ORDER BY 
@@ -412,7 +421,7 @@ VALUES (@Provider, @AccessToken, @RefreshToken, @DateCreatedUtc, @DateExpiresUtc
             }
             else
             {
-                throw new ArgumentException($"Record not found for {nameof(Part)} = {part.PartId}");
+                throw new StorageProviderException(nameof(MySqlStorageProvider), $"Record not found for {nameof(Part)} = {part.PartId}");
             }
             return part;
         }
@@ -429,7 +438,7 @@ VALUES (@Provider, @AccessToken, @RefreshToken, @DateCreatedUtc, @DateExpiresUtc
             }
             else
             {
-                throw new ArgumentException($"Record not found for {nameof(PartType)} = {partType.PartTypeId}");
+                throw new StorageProviderException(nameof(MySqlStorageProvider), $"Record not found for {nameof(PartType)} = {partType.PartTypeId}");
             }
             return partType;
         }
@@ -446,7 +455,7 @@ VALUES (@Provider, @AccessToken, @RefreshToken, @DateCreatedUtc, @DateExpiresUtc
             }
             else
             {
-                throw new ArgumentException($"Record not found for {nameof(Project)} = {project.ProjectId}");
+                throw new StorageProviderException(nameof(MySqlStorageProvider), $"Record not found for {nameof(Project)} = {project.ProjectId}");
             }
             return project;
         }
@@ -542,7 +551,7 @@ VALUES (@Provider, @AccessToken, @RefreshToken, @DateCreatedUtc, @DateExpiresUtc
             if (extendedType.IsDictionary)
             {
                 var t = record as IDictionary<string, object>;
-                foreach(var p in t)
+                foreach (var p in t)
                 {
                     var key = p.Key;
                     var val = p.Value;
@@ -602,36 +611,30 @@ VALUES (@Provider, @AccessToken, @RefreshToken, @DateCreatedUtc, @DateExpiresUtc
             var connectionStringBuilder = new MySqlConnectionStringBuilder(_config.ConnectionString);
             var schemaGenerator = new MySqlSchemaGenerator<T>(connectionStringBuilder.Database);
             var modified = 0;
-            try
+
+            // Ensure database exists
+            var query = schemaGenerator.CreateDatabaseIfNotExists();
+            using (var connection = new MySqlConnection(GetMasterDbConnectionString(_config.ConnectionString)))
             {
-                // Ensure database exists
-                var query = schemaGenerator.CreateDatabaseIfNotExists();
-                using (var connection = new MySqlConnection(GetMasterDbConnectionString(_config.ConnectionString)))
+                connection.Open();
+                using (var sqlCmd = new MySqlCommand(query, connection))
                 {
-                    connection.Open();
-                    using (var sqlCmd = new MySqlCommand(query, connection))
-                    {
-                        modified = (int)await sqlCmd.ExecuteScalarAsync();
-                    }
-                    connection.Close();
+                    modified = (int)await sqlCmd.ExecuteScalarAsync();
                 }
-                // Ensure table schema exists
-                query = schemaGenerator.CreateTableSchemaIfNotExists();
-                using (var connection = new MySqlConnection(_config.ConnectionString))
-                {
-                    connection.Open();
-                    using (var sqlCmd = new MySqlCommand(query, connection))
-                    {
-                        modified = (int)await sqlCmd.ExecuteScalarAsync();
-                    }
-                    connection.Close();
-                }
-                if (modified > 0) await SeedInitialDataAsync();
+                connection.Close();
             }
-            catch (Exception)
+            // Ensure table schema exists
+            query = schemaGenerator.CreateTableSchemaIfNotExists();
+            using (var connection = new MySqlConnection(_config.ConnectionString))
             {
-                throw;
+                connection.Open();
+                using (var sqlCmd = new MySqlCommand(query, connection))
+                {
+                    modified = (int)await sqlCmd.ExecuteScalarAsync();
+                }
+                connection.Close();
             }
+            if (modified > 0) await SeedInitialDataAsync();
 
             return modified > 0;
         }
