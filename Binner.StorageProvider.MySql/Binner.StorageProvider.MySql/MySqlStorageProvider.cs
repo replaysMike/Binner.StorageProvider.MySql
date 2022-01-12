@@ -1,14 +1,18 @@
 ﻿using Binner.Model.Common;
-using MySql.Data.MySqlClient;
+using MySqlConnector;
+using System;
+using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlTypes;
+using System.Linq;
 using System.Linq.Expressions;
+using System.Threading.Tasks;
 using TypeSupport.Extensions;
 
 namespace Binner.StorageProvider.MySql
 {
     /// <summary>
-    /// A storage provider for Sql Server
+    /// A storage provider for MySql
     /// </summary>
     public class MySqlStorageProvider : IStorageProvider
     {
@@ -53,7 +57,7 @@ namespace Binner.StorageProvider.MySql
 
         public async Task<long> GetPartsCountAsync(IUserContext userContext)
         {
-            var query = $"SELECT COUNT_BIG(*) FROM Parts WHERE (@UserId IS NULL OR UserId = @UserId);";
+            var query = $"SELECT COUNT(*) FROM Parts WHERE (@UserId IS NULL OR UserId = @UserId);";
             var result = await ExecuteScalarAsync<long>(query, new { UserId = userContext?.UserId });
             return result;
         }
@@ -105,9 +109,7 @@ OFFSET {offsetRecords} ROWS FETCH NEXT {request.Results} ROWS ONLY;";
             part.UserId = userContext?.UserId;
             var query =
 $@"INSERT INTO Parts (Quantity, LowStockThreshold, PartNumber, PackageType, MountingTypeId, DigiKeyPartNumber, MouserPartNumber, Description, PartTypeId, ProjectId, Keywords, DatasheetUrl, Location, BinNumber, BinNumber2, UserId, Cost, Manufacturer, ManufacturerPartNumber, LowestCostSupplier, LowestCostSupplierUrl, ProductUrl, ImageUrl, DateCreatedUtc) 
-output INSERTED.PartId 
-VALUES(@Quantity, @LowStockThreshold, @PartNumber, @PackageType, @MountingTypeId, @DigiKeyPartNumber, @MouserPartNumber, @Description, @PartTypeId, @ProjectId, @Keywords, @DatasheetUrl, @Location, @BinNumber, @BinNumber2, @UserId, @Cost, @Manufacturer, @ManufacturerPartNumber, @LowestCostSupplier, @LowestCostSupplierUrl, @ProductUrl, @ImageUrl, @DateCreatedUtc);
-";
+VALUES(@Quantity, @LowStockThreshold, @PartNumber, @PackageType, @MountingTypeId, @DigiKeyPartNumber, @MouserPartNumber, @Description, @PartTypeId, @ProjectId, @Keywords, @DatasheetUrl, @Location, @BinNumber, @BinNumber2, @UserId, @Cost, @Manufacturer, @ManufacturerPartNumber, @LowestCostSupplier, @LowestCostSupplierUrl, @ProductUrl, @ImageUrl, @DateCreatedUtc);";
             return await InsertAsync<Part, long>(query, part, (x, key) => { x.PartId = key; });
         }
 
@@ -116,9 +118,7 @@ VALUES(@Quantity, @LowStockThreshold, @PartNumber, @PackageType, @MountingTypeId
             project.UserId = userContext?.UserId;
             var query =
 $@"INSERT INTO Projects (Name, Description, Location, Color, UserId, DateCreatedUtc) 
-output INSERTED.ProjectId 
-VALUES(@Name, @Description, @Location, @Color, @UserId, @DateCreatedUtc);
-";
+VALUES(@Name, @Description, @Location, @Color, @UserId, @DateCreatedUtc);";
             return await InsertAsync<Project, long>(query, project, (x, key) => { x.ProjectId = key; });
         }
 
@@ -163,28 +163,28 @@ OR BinNumber2 = @Keywords
 PartsBeginsWith (PartId, Rank) AS
 (
 SELECT PartId, 100 as Rank FROM Parts WHERE (@UserId IS NULL OR UserId = @UserId) AND 
-PartNumber LIKE @Keywords + '%'
-OR DigiKeyPartNumber LIKE @Keywords + '%'
-OR MouserPartNumber LIKE @Keywords + '%'
-OR ManufacturerPartNumber LIKE @Keywords + '%'
-OR Description LIKE @Keywords + '%'
-OR Keywords LIKE @Keywords + '%'
-OR Location LIKE @Keywords + '%'
-OR BinNumber LIKE @Keywords + '%'
-OR BinNumber2 LIKE @Keywords+ '%'
+PartNumber LIKE CONCAT(@Keywords, '%')
+OR DigiKeyPartNumber LIKE CONCAT(@Keywords, '%')
+OR MouserPartNumber LIKE CONCAT(@Keywords, '%')
+OR ManufacturerPartNumber LIKE CONCAT(@Keywords, '%')
+OR Description LIKE CONCAT(@Keywords, '%')
+OR Keywords LIKE CONCAT(@Keywords, '%')
+OR Location LIKE CONCAT(@Keywords, '%')
+OR BinNumber LIKE CONCAT(@Keywords, '%')
+OR BinNumber2 LIKE CONCAT(@Keywords, '%')
 ),
 PartsAny (PartId, Rank) AS
 (
 SELECT PartId, 200 as Rank FROM Parts WHERE (@UserId IS NULL OR UserId = @UserId) AND 
-PartNumber LIKE '%' + @Keywords + '%'
-OR DigiKeyPartNumber LIKE '%' + @Keywords + '%'
-OR MouserPartNumber LIKE '%' + @Keywords + '%'
-OR ManufacturerPartNumber LIKE '%' + @Keywords + '%'
-OR Description LIKE '%' + @Keywords + '%'
-OR Keywords LIKE '%' + @Keywords + '%'
-OR Location LIKE '%' + @Keywords + '%'
-OR BinNumber LIKE '%' + @Keywords + '%'
-OR BinNumber2 LIKE '%' + @Keywords + '%'
+PartNumber LIKE CONCAT('%', @Keywords, '%')
+OR DigiKeyPartNumber LIKE CONCAT('%', @Keywords, '%')
+OR MouserPartNumber LIKE CONCAT('%', @Keywords, '%')
+OR ManufacturerPartNumber LIKE CONCAT('%', @Keywords, '%')
+OR Description LIKE CONCAT('%', @Keywords, '%')
+OR Keywords LIKE CONCAT('%', @Keywords, '%')
+OR Location LIKE CONCAT('%', @Keywords, '%')
+OR BinNumber LIKE CONCAT('%', @Keywords, '%')
+OR BinNumber2 LIKE CONCAT('%', @Keywords, '%')
 ),
 PartsMerged (PartId, Rank) AS
 (
@@ -275,7 +275,8 @@ VALUES (@ParentPartTypeId, @Name, @UserId, @DateCreatedUtc);";
         public async Task<ICollection<Part>> GetPartsAsync(Expression<Func<Part, bool>> predicate, IUserContext userContext)
         {
             var conditionalQuery = TranslatePredicateToSql(predicate);
-            var query = $"SELECT * FROM Parts WHERE {conditionalQuery.Sql} AND (@UserId IS NULL OR UserId = @UserId);";
+            var sql = conditionalQuery.Sql.Replace("[", "").Replace("]", "");
+            var query = $"SELECT * FROM Parts WHERE {sql} AND (@UserId IS NULL OR UserId = @UserId);";
             conditionalQuery.Parameters.Add("UserId", userContext?.UserId);
             var result = await SqlQueryAsync<Part>(query, conditionalQuery.Parameters);
             return result.ToList();
@@ -469,9 +470,10 @@ VALUES (@Provider, @AccessToken, @RefreshToken, @DateCreatedUtc, @DateExpiresUtc
                 {
                     sqlCmd.Parameters.AddRange(CreateParameters<T>(parameters));
                     sqlCmd.CommandType = CommandType.Text;
-                    var result = await sqlCmd.ExecuteScalarAsync();
-                    if (result != null)
-                        keySetter.Invoke(parameters, (TKey)result);
+                    await sqlCmd.ExecuteNonQueryAsync();
+                    var result = sqlCmd.LastInsertedId;
+                    keySetter.Invoke(parameters, (TKey)Convert.ChangeType(result, typeof(TKey)));
+
                 }
                 connection.Close();
             }
@@ -520,7 +522,11 @@ VALUES (@Provider, @AccessToken, @RefreshToken, @DateCreatedUtc, @DateExpiresUtc
                 {
                     sqlCmd.Parameters.AddRange(CreateParameters(parameters));
                     sqlCmd.CommandType = CommandType.Text;
-                    result = (T)await sqlCmd.ExecuteScalarAsync();
+                    var untypedResult = await sqlCmd.ExecuteScalarAsync();
+                    if (untypedResult != DBNull.Value)
+                        result = (T)untypedResult;
+                    else
+                        result = default(T);
                 }
                 connection.Close();
             }
@@ -611,15 +617,16 @@ VALUES (@Provider, @AccessToken, @RefreshToken, @DateCreatedUtc, @DateExpiresUtc
             var connectionStringBuilder = new MySqlConnectionStringBuilder(_config.ConnectionString);
             var schemaGenerator = new MySqlSchemaGenerator<T>(connectionStringBuilder.Database);
             var modified = 0;
+            var query = string.Empty;
 
             // Ensure database exists
-            var query = schemaGenerator.CreateDatabaseIfNotExists();
             using (var connection = new MySqlConnection(GetMasterDbConnectionString(_config.ConnectionString)))
             {
                 connection.Open();
+                query = schemaGenerator.CreateDatabaseIfNotExists();
                 using (var sqlCmd = new MySqlCommand(query, connection))
                 {
-                    modified = (int)await sqlCmd.ExecuteScalarAsync();
+                    modified += await sqlCmd.ExecuteNonQueryAsync();
                 }
                 connection.Close();
             }
@@ -630,7 +637,7 @@ VALUES (@Provider, @AccessToken, @RefreshToken, @DateCreatedUtc, @DateExpiresUtc
                 connection.Open();
                 using (var sqlCmd = new MySqlCommand(query, connection))
                 {
-                    modified = (int)await sqlCmd.ExecuteScalarAsync();
+                    modified += await sqlCmd.ExecuteNonQueryAsync();
                 }
                 connection.Close();
             }
@@ -639,15 +646,17 @@ VALUES (@Provider, @AccessToken, @RefreshToken, @DateCreatedUtc, @DateExpiresUtc
             return modified > 0;
         }
 
+        private string SetCharacterSet() => "SET character_set_results=utf8;\r\n";
+
         private async Task<bool> SeedInitialDataAsync()
         {
             //DefaultPartTypes
             var defaultPartTypes = typeof(SystemDefaults.DefaultPartTypes).GetExtendedType();
-            var query = "";
+            var query = SetCharacterSet();
             var modified = 0;
             foreach (var partType in defaultPartTypes.EnumValues)
             {
-                query += $"INSERT INTO PartTypes (Name, DateCreatedUtc) VALUES('{partType.Value}', GETUTCDATE());\r\n";
+                query += $"INSERT INTO PartTypes (Name, DateCreatedUtc) VALUES('{partType.Value}', UTC_TIMESTAMP());\r\n";
             }
             using (var connection = new MySqlConnection(_config.ConnectionString))
             {
@@ -664,7 +673,7 @@ VALUES (@Provider, @AccessToken, @RefreshToken, @DateCreatedUtc, @DateExpiresUtc
         private string GetMasterDbConnectionString(string connectionString)
         {
             var builder = new MySqlConnectionStringBuilder(connectionString);
-            builder.Database = "master";
+            builder.Database = "mysql";
             return builder.ToString();
         }
 
