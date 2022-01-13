@@ -8,6 +8,7 @@ using System.Linq;
 using System.Linq.Expressions;
 using System.Threading.Tasks;
 using TypeSupport.Extensions;
+using static Binner.Model.Common.SystemDefaults;
 
 namespace Binner.StorageProvider.MySql
 {
@@ -652,11 +653,20 @@ VALUES (@Provider, @AccessToken, @RefreshToken, @DateCreatedUtc, @DateExpiresUtc
         {
             //DefaultPartTypes
             var defaultPartTypes = typeof(SystemDefaults.DefaultPartTypes).GetExtendedType();
-            var query = SetCharacterSet();
+            var query = "";
             var modified = 0;
             foreach (var partType in defaultPartTypes.EnumValues)
             {
-                query += $"INSERT INTO PartTypes (Name, DateCreatedUtc) VALUES('{partType.Value}', UTC_TIMESTAMP());\r\n";
+                int? parentPartTypeId = null;
+                var partTypeEnum = (DefaultPartTypes)partType.Key;
+                var field = typeof(DefaultPartTypes).GetField(partType.Value);
+                if (field.IsDefined(typeof(ParentPartTypeAttribute), false))
+                {
+                    var customAttribute = Attribute.GetCustomAttribute(field, typeof(ParentPartTypeAttribute)) as ParentPartTypeAttribute;
+                    parentPartTypeId = (int)customAttribute.Parent;
+                }
+
+                query += $"INSERT INTO PartTypes (Name, ParentPartTypeId, DateCreatedUtc) VALUES('{partType.Value}', {parentPartTypeId?.ToString() ?? "null"}, UTC_TIMESTAMP());\r\n";
             }
             using (var connection = new MySqlConnection(_config.ConnectionString))
             {
