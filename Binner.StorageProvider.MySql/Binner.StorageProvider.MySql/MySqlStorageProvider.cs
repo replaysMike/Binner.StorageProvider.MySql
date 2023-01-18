@@ -1,12 +1,8 @@
 ﻿using Binner.Model.Common;
 using MySqlConnector;
-using System;
-using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlTypes;
-using System.Linq;
 using System.Linq.Expressions;
-using System.Threading.Tasks;
 using TypeSupport.Extensions;
 using static Binner.Model.Common.SystemDefaults;
 
@@ -66,7 +62,7 @@ namespace Binner.StorageProvider.MySql
         public async Task<long> GetPartsCountAsync(IUserContext userContext)
         {
             var query = $"SELECT CAST(SUM(Quantity) AS int) FROM Parts WHERE (@UserId IS NULL OR UserId = @UserId);";
-            var result = await ExecuteScalarAsync<int>(query, new { UserId = userContext?.UserId });
+            var result = await ExecuteScalarAsync<long>(query, new { UserId = userContext?.UserId });
             return result;
         }
 
