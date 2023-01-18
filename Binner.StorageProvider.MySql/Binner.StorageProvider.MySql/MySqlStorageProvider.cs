@@ -65,8 +65,8 @@ namespace Binner.StorageProvider.MySql
 
         public async Task<long> GetPartsCountAsync(IUserContext userContext)
         {
-            var query = $"SELECT CAST(SUM(Quantity) AS bigint) FROM Parts WHERE (@UserId IS NULL OR UserId = @UserId);";
-            var result = await ExecuteScalarAsync<long>(query, new { UserId = userContext?.UserId });
+            var query = $"SELECT CAST(SUM(Quantity) AS int) FROM Parts WHERE (@UserId IS NULL OR UserId = @UserId);";
+            var result = await ExecuteScalarAsync<int>(query, new { UserId = userContext?.UserId });
             return result;
         }
 
