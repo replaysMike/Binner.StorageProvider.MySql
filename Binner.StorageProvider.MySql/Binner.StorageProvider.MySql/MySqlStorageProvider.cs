@@ -17,6 +17,7 @@ namespace Binner.StorageProvider.MySql
 
         private readonly MySqlStorageConfiguration _config;
         private bool _isDisposed;
+        private string _databaseName = "Binner";
 
         public MySqlStorageProvider(IDictionary<string, string> config)
         {
@@ -50,6 +51,22 @@ namespace Binner.StorageProvider.MySql
                 FirstPartId = parts.OrderBy(x => x.PartId).First().PartId,
                 LastPartId = parts.OrderBy(x => x.PartId).Last().PartId,
             };
+        }
+
+        public async Task<ConnectionResponse> TestConnectionAsync()
+        {
+            try
+            {
+                using var connection = new MySqlConnection(_config.ConnectionString);
+                connection.Open();
+                using var sqlCmd = new MySqlCommand($"SELECT 1 FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = '{_databaseName}';", connection);
+                var dbId = (int?)await sqlCmd.ExecuteScalarAsync();
+                return new ConnectionResponse { IsSuccess = true, DatabaseExists = dbId != null, Errors = new List<string>() };
+            }
+            catch (Exception ex)
+            {
+                return new ConnectionResponse { IsSuccess = false, Errors = new List<string>() { ex.GetBaseException().Message } };
+            }
         }
 
         public async Task<long> GetUniquePartsCountAsync(IUserContext userContext)
@@ -702,7 +719,8 @@ OFFSET {offsetRecords} ROWS FETCH NEXT {request.Results} ROWS ONLY;";
         private async Task<bool> GenerateDatabaseIfNotExistsAsync<T>()
         {
             var connectionStringBuilder = new MySqlConnectionStringBuilder(_config.ConnectionString);
-            var schemaGenerator = new MySqlSchemaGenerator<T>(connectionStringBuilder.Database);
+            _databaseName = !string.IsNullOrEmpty(connectionStringBuilder.Database) ? connectionStringBuilder.Database : "Binner";
+            var schemaGenerator = new MySqlSchemaGenerator<T>(_databaseName);
             var modified = 0;
             var query = string.Empty;
 
