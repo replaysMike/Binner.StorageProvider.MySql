@@ -23,7 +23,7 @@ namespace Binner.StorageProvider.MySql
             _config = new MySqlStorageConfiguration(config);
             try
             {
-                GenerateDatabaseIfNotExistsAsync<IBinnerDb>()
+                GenerateDatabaseIfNotExistsAsync<BinnerDbV2>()
                     .GetAwaiter()
                     .GetResult();
             }

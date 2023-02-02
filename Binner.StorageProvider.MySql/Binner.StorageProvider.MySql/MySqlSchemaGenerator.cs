@@ -106,6 +106,9 @@ namespace Binner.StorageProvider.MySql
                         else
                             columnSchema = $"{prop.Name} varbinary({maxLength})";
                         break;
+                    case var p when p.NullableBaseType.IsEnum:
+                        columnSchema = $"{prop.Name} integer";
+                        break;
                     default:
                         throw new InvalidOperationException($"Unsupported data type: {prop.Type}");
                 }
