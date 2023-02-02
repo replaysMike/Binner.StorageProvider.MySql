@@ -59,7 +59,7 @@ namespace Binner.StorageProvider.MySql
             {
                 using var connection = new MySqlConnection(_config.ConnectionString);
                 connection.Open();
-                using var sqlCmd = new MySqlCommand($"SELECT 1 FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = '{_databaseName}';", connection);
+                using var sqlCmd = new MySqlCommand($"SELECT CAST(1 as int) FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = '{_databaseName}';", connection);
                 var dbId = (int?)await sqlCmd.ExecuteScalarAsync();
                 return new ConnectionResponse { IsSuccess = true, DatabaseExists = dbId != null, Errors = new List<string>() };
             }
