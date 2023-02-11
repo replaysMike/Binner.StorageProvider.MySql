@@ -100,6 +100,12 @@ namespace Binner.StorageProvider.MySql
                     case var p when p.NullableBaseType == typeof(TimeSpan):
                         columnSchema = $"{prop.Name} time";
                         break;
+                    case var p when p.NullableBaseType == typeof(Guid):
+                        columnSchema = $"{prop.Name} varchar(36)";
+                        break;
+                    case var p when p.NullableBaseType == typeof(bool):
+                        columnSchema = $"{prop.Name} tinyint";
+                        break;
                     case var p when p.NullableBaseType == typeof(byte[]):
                         if (maxLength == "max")
                             columnSchema = $"{prop.Name} varbinary(65535)";

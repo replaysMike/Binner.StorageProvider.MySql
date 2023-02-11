@@ -565,6 +565,74 @@ OFFSET {offsetRecords} ROWS FETCH NEXT {request.Results} ROWS ONLY;";
             return storedFile;
         }
 
+        public async Task<OAuthAuthorization> CreateOAuthRequestAsync(OAuthAuthorization authRequest, IUserContext userContext)
+        {
+            var oAuthRequest = new OAuthRequest
+            {
+                AuthorizationCode = authRequest.AuthorizationCode,
+                AuthorizationReceived = authRequest.AuthorizationReceived,
+                Error = authRequest.Error,
+                ErrorDescription = authRequest.ErrorDescription,
+                Provider = authRequest.Provider,
+                RequestId = authRequest.Id,
+                ReturnToUrl = authRequest.ReturnToUrl,
+                UserId = userContext?.UserId,
+                DateCreatedUtc = DateTime.UtcNow,
+                DateModifiedUtc = DateTime.UtcNow
+            };
+            var query =
+$@"INSERT INTO OAuthRequests (AuthorizationCode, AuthorizationReceived, Error, ErrorDescription, Provider, RequestId, ReturnToUrl, UserId, DateCreatedUtc, DateModifiedUtc) 
+VALUES(@AuthorizationCode, @AuthorizationReceived, @Error, @ErrorDescription, @Provider, @RequestId, @ReturnToUrl, @UserId, @DateCreatedUtc, @DateModifiedUtc);
+";
+            var createdOAuthRequest = await InsertAsync<OAuthRequest, int>(query, oAuthRequest, (x, key) => { x.OAuthRequestId = key; });
+            return authRequest;
+        }
+
+        public async Task<OAuthAuthorization> UpdateOAuthRequestAsync(OAuthAuthorization authRequest, IUserContext userContext)
+        {
+            var oAuthRequest = new OAuthRequest
+            {
+                AuthorizationCode = authRequest.AuthorizationCode,
+                AuthorizationReceived = authRequest.AuthorizationReceived,
+                Error = authRequest.Error,
+                ErrorDescription = authRequest.ErrorDescription,
+                Provider = authRequest.Provider,
+                RequestId = authRequest.Id,
+                ReturnToUrl = authRequest.ReturnToUrl,
+                UserId = userContext?.UserId,
+                DateModifiedUtc = DateTime.UtcNow
+            };
+            var query = $"SELECT OAuthRequestId FROM OAuthRequests WHERE Provider = @Provider AND RequestId = @RequestId AND (@UserId IS NULL OR UserId = @UserId);";
+            var result = await SqlQueryAsync<OAuthRequest>(query, oAuthRequest);
+            if (result.Any())
+            {
+                query = $"UPDATE OAuthRequests SET AuthorizationCode = @AuthorizationCode, AuthorizationReceived = @AuthorizationReceived, Error = @Error, ErrorDescription = @ErrorDescription, DateModifiedUtc = @DateModifiedUtc WHERE Provider = @Provider AND RequestId = @RequestId AND (@UserId IS NULL OR UserId = @UserId);";
+                await ExecuteAsync(query, oAuthRequest);
+            }
+            else
+            {
+                throw new StorageProviderException(nameof(MySqlStorageProvider), $"Record not found for {nameof(OAuthRequest)} = (Provider: {oAuthRequest.Provider}, RequestId: {oAuthRequest.RequestId})");
+            }
+            return authRequest;
+        }
+
+        public async Task<OAuthAuthorization?> GetOAuthRequestAsync(Guid requestId, IUserContext userContext)
+        {
+            var query = $"SELECT * FROM OAuthRequests WHERE RequestId = @RequestId AND (@UserId IS NULL OR UserId = @UserId);";
+            var result = await SqlQueryAsync<OAuthRequest>(query, new { RequestId = requestId, UserId = userContext?.UserId });
+            var oAuthRequest = result.FirstOrDefault();
+            if (oAuthRequest == null) return null;
+
+            return new OAuthAuthorization(oAuthRequest.Provider, oAuthRequest.RequestId)
+            {
+                UserId = userContext?.UserId,
+                Error = oAuthRequest.Error,
+                ErrorDescription = oAuthRequest.ErrorDescription,
+                AuthorizationReceived = false,
+                ReturnToUrl = oAuthRequest.ReturnToUrl ?? string.Empty,
+            };
+        }
+
         private async Task<T> InsertAsync<T, TKey>(string query, T parameters, Action<T, TKey> keySetter)
         {
             using (var connection = new MySqlConnection(_config.ConnectionString))
@@ -692,6 +760,10 @@ OFFSET {offsetRecords} ROWS FETCH NEXT {request.Results} ROWS ONLY;";
                 case var p when p.IsCollection:
                 case var a when a.IsArray:
                     return obj.ToString().Split(new string[] { "," }, StringSplitOptions.RemoveEmptyEntries);
+                case var p when p.Type == typeof(Guid):
+                    return new Guid(obj.ToString());
+                case var p when p.Type == typeof(bool):
+                    return (int)(sbyte)obj > 0;
                 default:
                     return obj;
             }
@@ -711,6 +783,10 @@ OFFSET {offsetRecords} ROWS FETCH NEXT {request.Results} ROWS ONLY;";
                     if (((DateTime)obj) == DateTime.MinValue)
                         return SqlDateTime.MinValue.Value;
                     return obj;
+                case var p when p.Type == typeof(Guid):
+                    return obj.ToString();
+                case var p when p.Type == typeof(bool):
+                    return (byte)((bool)obj == true ? 1 : 0);
                 default:
                     return obj;
             }
