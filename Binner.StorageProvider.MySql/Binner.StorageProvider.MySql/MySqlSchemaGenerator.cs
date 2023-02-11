@@ -131,13 +131,15 @@ namespace Binner.StorageProvider.MySql
             return columnSchema;
         }
 
-        private string GetMaxLength(ExtendedProperty prop)
+        private string? GetMaxLength(ExtendedProperty prop)
         {
             var maxLengthAttr = prop.CustomAttributes.ToList().FirstOrDefault(x => x.AttributeType == typeof(MaxLengthAttribute));
             var maxLength = "max";
             if (maxLengthAttr != null)
             {
-                maxLength = maxLengthAttr.ConstructorArguments.First().Value.ToString();
+                var value = maxLengthAttr.ConstructorArguments.First().Value;
+                if (value != null)
+                    maxLength = value.ToString();
             }
             return maxLength;
         }

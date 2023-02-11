@@ -2,7 +2,7 @@
 {
     public class MySqlStorageConfiguration
     {
-        public string ConnectionString { get; set; }
+        public string? ConnectionString { get; set; }
 
         public MySqlStorageConfiguration()
         {

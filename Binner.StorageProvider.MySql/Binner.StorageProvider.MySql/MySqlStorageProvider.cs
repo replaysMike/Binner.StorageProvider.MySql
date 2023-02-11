@@ -24,7 +24,7 @@ namespace Binner.StorageProvider.MySql
             _config = new MySqlStorageConfiguration(config);
             try
             {
-                GenerateDatabaseIfNotExistsAsync<BinnerDbV2>()
+                GenerateDatabaseIfNotExistsAsync<BinnerDbV3>()
                     .GetAwaiter()
                     .GetResult();
             }
@@ -235,14 +235,14 @@ INNER JOIN (
             return result;
         }
 
-        public async Task<OAuthCredential> GetOAuthCredentialAsync(string providerName, IUserContext userContext)
+        public async Task<OAuthCredential?> GetOAuthCredentialAsync(string providerName, IUserContext userContext)
         {
             var query = $"SELECT * FROM OAuthCredentials WHERE Provider = @ProviderName AND (@UserId IS NULL OR UserId = @UserId);";
             var result = await SqlQueryAsync<OAuthCredential>(query, new { ProviderName = providerName, UserId = userContext?.UserId });
             return result.FirstOrDefault();
         }
 
-        public async Task<PartType> GetOrCreatePartTypeAsync(PartType partType, IUserContext userContext)
+        public async Task<PartType?> GetOrCreatePartTypeAsync(PartType partType, IUserContext userContext)
         {
             partType.UserId = userContext?.UserId;
             var query = $"SELECT PartTypeId FROM PartTypes WHERE Name = @Name AND (@UserId IS NULL OR UserId = @UserId);";
@@ -269,14 +269,14 @@ VALUES (@ParentPartTypeId, @Name, @UserId, @DateCreatedUtc);";
             return result.ToList();
         }
 
-        public async Task<Part> GetPartAsync(long partId, IUserContext userContext)
+        public async Task<Part?> GetPartAsync(long partId, IUserContext userContext)
         {
             var query = $"SELECT * FROM Parts WHERE PartId = @PartId AND (@UserId IS NULL OR UserId = @UserId);";
             var result = await SqlQueryAsync<Part>(query, new { PartId = partId, UserId = userContext?.UserId });
             return result.FirstOrDefault();
         }
 
-        public async Task<Part> GetPartAsync(string partNumber, IUserContext userContext)
+        public async Task<Part?> GetPartAsync(string partNumber, IUserContext userContext)
         {
             var query = $"SELECT * FROM Parts WHERE PartNumber = @PartNumber AND (@UserId IS NULL OR UserId = @UserId);";
             var result = await SqlQueryAsync<Part>(query, new { PartNumber = partNumber, UserId = userContext?.UserId });
@@ -352,21 +352,21 @@ OFFSET {offsetRecords} ROWS FETCH NEXT {request.Results} ROWS ONLY;";
             return new PaginatedResponse<Part>((int)totalItems, request.Results, request.Page, result.ToList());
         }
 
-        public async Task<PartType> GetPartTypeAsync(long partTypeId, IUserContext userContext)
+        public async Task<PartType?> GetPartTypeAsync(long partTypeId, IUserContext userContext)
         {
             var query = $"SELECT * FROM PartTypes WHERE PartTypeId = @PartTypeId AND (@UserId IS NULL OR UserId = @UserId);";
             var result = await SqlQueryAsync<PartType>(query, new { PartTypeId = partTypeId, UserId = userContext?.UserId });
             return result.FirstOrDefault();
         }
 
-        public async Task<Project> GetProjectAsync(long projectId, IUserContext userContext)
+        public async Task<Project?> GetProjectAsync(long projectId, IUserContext userContext)
         {
             var query = $"SELECT * FROM Projects WHERE ProjectId = @ProjectId AND (@UserId IS NULL OR UserId = @UserId);";
             var result = await SqlQueryAsync<Project>(query, new { ProjectId = projectId, UserId = userContext?.UserId });
             return result.FirstOrDefault();
         }
 
-        public async Task<Project> GetProjectAsync(string projectName, IUserContext userContext)
+        public async Task<Project?> GetProjectAsync(string projectName, IUserContext userContext)
         {
             var query = $"SELECT * FROM Projects WHERE Name = @Name AND (@UserId IS NULL OR UserId = @UserId);";
             var result = await SqlQueryAsync<Project>(query, new { Name = projectName, UserId = userContext?.UserId });
@@ -492,14 +492,14 @@ VALUES(@FileName, @OriginalFileName, @StoredFileType, @PartId, @FileLength, @Crc
             return await InsertAsync<StoredFile, long>(query, storedFile, (x, key) => { x.StoredFileId = key; });
         }
 
-        public async Task<StoredFile> GetStoredFileAsync(long storedFileId, IUserContext userContext)
+        public async Task<StoredFile?> GetStoredFileAsync(long storedFileId, IUserContext userContext)
         {
             var query = $"SELECT * FROM StoredFiles WHERE StoredFileId = @StoredFileId AND (@UserId IS NULL OR UserId = @UserId);";
             var result = await SqlQueryAsync<StoredFile>(query, new { StoredFileId = storedFileId, UserId = userContext?.UserId });
             return result.FirstOrDefault();
         }
 
-        public async Task<StoredFile> GetStoredFileAsync(string filename, IUserContext userContext)
+        public async Task<StoredFile?> GetStoredFileAsync(string filename, IUserContext userContext)
         {
             var query = $"SELECT * FROM StoredFiles WHERE Filename = @Filename AND (@UserId IS NULL OR UserId = @UserId);";
             var result = await SqlQueryAsync<StoredFile>(query, new { Filename = filename, UserId = userContext?.UserId });
@@ -652,7 +652,7 @@ VALUES(@AuthorizationCode, @AuthorizationReceived, @Error, @ErrorDescription, @P
             return parameters;
         }
 
-        private async Task<ICollection<T>> SqlQueryAsync<T>(string query, object parameters = null)
+        private async Task<ICollection<T>> SqlQueryAsync<T>(string query, object? parameters = null)
         {
             var results = new List<T>();
             var type = typeof(T).GetExtendedType();
@@ -684,7 +684,7 @@ VALUES(@AuthorizationCode, @AuthorizationReceived, @Error, @ErrorDescription, @P
             return results;
         }
 
-        private async Task<T> ExecuteScalarAsync<T>(string query, object parameters = null)
+        private async Task<T> ExecuteScalarAsync<T>(string query, object? parameters = null)
         {
             T result;
             using (var connection = new MySqlConnection(_config.ConnectionString))
@@ -750,18 +750,18 @@ VALUES(@AuthorizationCode, @AuthorizationReceived, @Error, @ErrorDescription, @P
             return parameters.ToArray();
         }
 
-        private object MapToPropertyValue(object obj, Type destinationType)
+        private object? MapToPropertyValue(object? obj, Type destinationType)
         {
-            if (obj == DBNull.Value) return null;
+            if (obj == null || obj == DBNull.Value) return null;
 
             var objType = destinationType.GetExtendedType();
             switch (objType)
             {
                 case var p when p.IsCollection:
                 case var a when a.IsArray:
-                    return obj.ToString().Split(new string[] { "," }, StringSplitOptions.RemoveEmptyEntries);
+                    return obj.ToString()?.Split(new string[] { "," }, StringSplitOptions.RemoveEmptyEntries);
                 case var p when p.Type == typeof(Guid):
-                    return new Guid(obj.ToString());
+                    return new Guid(obj.ToString() ?? string.Empty);
                 case var p when p.Type == typeof(bool):
                     return (int)(sbyte)obj > 0;
                 default:
@@ -769,7 +769,7 @@ VALUES(@AuthorizationCode, @AuthorizationReceived, @Error, @ErrorDescription, @P
             }
         }
 
-        private object MapFromPropertyValue(object obj)
+        private object? MapFromPropertyValue(object? obj)
         {
             if (obj == null) return DBNull.Value;
 
