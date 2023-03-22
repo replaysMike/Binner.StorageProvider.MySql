@@ -24,7 +24,7 @@ namespace Binner.StorageProvider.MySql
             _config = new MySqlStorageConfiguration(config);
             try
             {
-                GenerateDatabaseIfNotExistsAsync<BinnerDbV4>()
+                GenerateDatabaseIfNotExistsAsync<BinnerDbV5>()
                     .GetAwaiter()
                     .GetResult();
             }
@@ -41,7 +41,7 @@ namespace Binner.StorageProvider.MySql
         public async Task<IBinnerDb> GetDatabaseAsync(IUserContext? userContext)
         {
             var parts = await GetPartsAsync();
-            return new BinnerDbV4
+            return new BinnerDbV5
             {
                 OAuthCredentials = await GetOAuthCredentialAsync(userContext),
                 Parts = parts,
@@ -53,6 +53,7 @@ namespace Binner.StorageProvider.MySql
                 PcbStoredFileAssignments = await GetPcbStoredFileAssignmentsAsync(userContext),
                 ProjectPartAssignments = await GetProjectPartAssignmentsAsync(userContext),
                 ProjectPcbAssignments = await GetProjectPcbAssignmentsAsync(userContext),
+                PartSuppliers = await GetPartSuppliersAsync(userContext),
                 Count = parts.Count,
                 FirstPartId = parts.OrderBy(x => x.PartId).First().PartId,
                 LastPartId = parts.OrderBy(x => x.PartId).Last().PartId,
@@ -119,6 +120,7 @@ CASE WHEN @OrderBy IS NULL THEN PartId ELSE NULL END {sortDirection},
 CASE WHEN @OrderBy = 'PartNumber' THEN PartNumber ELSE NULL END {sortDirection}, 
 CASE WHEN @OrderBy = 'DigikeyPartNumber' THEN DigikeyPartNumber ELSE NULL END {sortDirection}, 
 CASE WHEN @OrderBy = 'MouserPartNumber' THEN MouserPartNumber ELSE NULL END {sortDirection}, 
+CASE WHEN @OrderBy = 'ArrowPartNumber' THEN ArrowPartNumber ELSE NULL END {sortDirection}, 
 CASE WHEN @OrderBy = 'Cost' THEN Cost ELSE NULL END {sortDirection}, 
 CASE WHEN @OrderBy = 'Quantity' THEN Quantity ELSE NULL END {sortDirection}, 
 CASE WHEN @OrderBy = 'LowStockThreshold' THEN LowStockThreshold ELSE NULL END {sortDirection}, 
@@ -139,8 +141,8 @@ OFFSET {offsetRecords} ROWS FETCH NEXT {request.Results} ROWS ONLY;";
         {
             part.UserId = userContext?.UserId;
             var query =
-$@"INSERT INTO Parts (Quantity, LowStockThreshold, PartNumber, PackageType, MountingTypeId, DigiKeyPartNumber, MouserPartNumber, Description, PartTypeId, ProjectId, Keywords, DatasheetUrl, Location, BinNumber, BinNumber2, UserId, Cost, Manufacturer, ManufacturerPartNumber, LowestCostSupplier, LowestCostSupplierUrl, ProductUrl, ImageUrl, DateCreatedUtc) 
-VALUES(@Quantity, @LowStockThreshold, @PartNumber, @PackageType, @MountingTypeId, @DigiKeyPartNumber, @MouserPartNumber, @Description, @PartTypeId, @ProjectId, @Keywords, @DatasheetUrl, @Location, @BinNumber, @BinNumber2, @UserId, @Cost, @Manufacturer, @ManufacturerPartNumber, @LowestCostSupplier, @LowestCostSupplierUrl, @ProductUrl, @ImageUrl, @DateCreatedUtc);";
+$@"INSERT INTO Parts (Quantity, LowStockThreshold, PartNumber, PackageType, MountingTypeId, DigiKeyPartNumber, MouserPartNumber, Description, PartTypeId, ProjectId, Keywords, DatasheetUrl, Location, BinNumber, BinNumber2, UserId, Cost, Manufacturer, ManufacturerPartNumber, LowestCostSupplier, LowestCostSupplierUrl, ProductUrl, ImageUrl, DateCreatedUtc, ArrowPartNumber) 
+VALUES(@Quantity, @LowStockThreshold, @PartNumber, @PackageType, @MountingTypeId, @DigiKeyPartNumber, @MouserPartNumber, @Description, @PartTypeId, @ProjectId, @Keywords, @DatasheetUrl, @Location, @BinNumber, @BinNumber2, @UserId, @Cost, @Manufacturer, @ManufacturerPartNumber, @LowestCostSupplier, @LowestCostSupplierUrl, @ProductUrl, @ImageUrl, @DateCreatedUtc, @ArrowPartNumber);";
             return await InsertAsync<Part, long>(query, part, (x, key) => { x.PartId = key; });
         }
 
@@ -148,8 +150,8 @@ VALUES(@Quantity, @LowStockThreshold, @PartNumber, @PackageType, @MountingTypeId
         {
             project.UserId = userContext?.UserId;
             var query =
-$@"INSERT INTO Projects (Name, Description, Location, Color, UserId, DateCreatedUtc) 
-VALUES(@Name, @Description, @Location, @Color, @UserId, @DateCreatedUtc);";
+$@"INSERT INTO Projects (Name, Description, Location, Color, UserId, DateCreatedUtc, DateModifiedUtc, Notes) 
+VALUES(@Name, @Description, @Location, @Color, @UserId, @DateCreatedUtc, @DateModifiedUtc, @Notes);";
             return await InsertAsync<Project, long>(query, project, (x, key) => { x.ProjectId = key; });
         }
 
@@ -180,42 +182,45 @@ VALUES(@Name, @Description, @Location, @Color, @UserId, @DateCreatedUtc);";
             var query =
 $@"WITH PartsExactMatch (PartId, Rank) AS
 (
-SELECT PartId, 10 as Rank FROM Parts WHERE (@UserId IS NULL OR UserId = @UserId) AND 
+SELECT PartId, 10 as Rank FROM Parts WHERE (@UserId IS NULL OR UserId = @UserId) AND (
 PartNumber = @Keywords 
 OR DigiKeyPartNumber = @Keywords 
 OR MouserPartNumber = @Keywords
+OR ArrowPartNumber = @Keywords
 OR ManufacturerPartNumber = @Keywords
 OR Description = @Keywords 
 OR Keywords = @Keywords 
 OR Location = @Keywords 
 OR BinNumber = @Keywords 
-OR BinNumber2 = @Keywords
+OR BinNumber2 = @Keywords)
 ),
 PartsBeginsWith (PartId, Rank) AS
 (
-SELECT PartId, 100 as Rank FROM Parts WHERE (@UserId IS NULL OR UserId = @UserId) AND 
+SELECT PartId, 100 as Rank FROM Parts WHERE (@UserId IS NULL OR UserId = @UserId) AND (
 PartNumber LIKE CONCAT(@Keywords, '%')
 OR DigiKeyPartNumber LIKE CONCAT(@Keywords, '%')
 OR MouserPartNumber LIKE CONCAT(@Keywords, '%')
+OR ArrowPartNumber LIKE CONCAT(@Keywords, '%')
 OR ManufacturerPartNumber LIKE CONCAT(@Keywords, '%')
 OR Description LIKE CONCAT(@Keywords, '%')
 OR Keywords LIKE CONCAT(@Keywords, '%')
 OR Location LIKE CONCAT(@Keywords, '%')
 OR BinNumber LIKE CONCAT(@Keywords, '%')
-OR BinNumber2 LIKE CONCAT(@Keywords, '%')
+OR BinNumber2 LIKE CONCAT(@Keywords, '%'))
 ),
 PartsAny (PartId, Rank) AS
 (
-SELECT PartId, 200 as Rank FROM Parts WHERE (@UserId IS NULL OR UserId = @UserId) AND 
+SELECT PartId, 200 as Rank FROM Parts WHERE (@UserId IS NULL OR UserId = @UserId) AND (
 PartNumber LIKE CONCAT('%', @Keywords, '%')
 OR DigiKeyPartNumber LIKE CONCAT('%', @Keywords, '%')
 OR MouserPartNumber LIKE CONCAT('%', @Keywords, '%')
+OR ArrowPartNumber LIKE CONCAT('%', @Keywords, '%')
 OR ManufacturerPartNumber LIKE CONCAT('%', @Keywords, '%')
 OR Description LIKE CONCAT('%', @Keywords, '%')
 OR Keywords LIKE CONCAT('%', @Keywords, '%')
 OR Location LIKE CONCAT('%', @Keywords, '%')
 OR BinNumber LIKE CONCAT('%', @Keywords, '%')
-OR BinNumber2 LIKE CONCAT('%', @Keywords, '%')
+OR BinNumber2 LIKE CONCAT('%', @Keywords, '%'))
 ),
 PartsMerged (PartId, Rank) AS
 (
@@ -345,6 +350,7 @@ CASE WHEN @OrderBy IS NULL THEN PartId ELSE NULL END {sortDirection},
 CASE WHEN @OrderBy = 'PartNumber' THEN PartNumber ELSE NULL END {sortDirection}, 
 CASE WHEN @OrderBy = 'DigikeyPartNumber' THEN DigikeyPartNumber ELSE NULL END {sortDirection}, 
 CASE WHEN @OrderBy = 'MouserPartNumber' THEN MouserPartNumber ELSE NULL END {sortDirection}, 
+CASE WHEN @OrderBy = 'ArrowPartNumber' THEN ArrowPartNumber ELSE NULL END {sortDirection}, 
 CASE WHEN @OrderBy = 'Cost' THEN Cost ELSE NULL END {sortDirection}, 
 CASE WHEN @OrderBy = 'Quantity' THEN Quantity ELSE NULL END {sortDirection}, 
 CASE WHEN @OrderBy = 'LowStockThreshold' THEN LowStockThreshold ELSE NULL END {sortDirection}, 
@@ -447,7 +453,7 @@ VALUES (@Provider, @AccessToken, @RefreshToken, @DateCreatedUtc, @DateExpiresUtc
             var result = await SqlQueryAsync<Part>(query, part);
             if (result.Any())
             {
-                query = $"UPDATE Parts SET Quantity = @Quantity, LowStockThreshold = @LowStockThreshold, Cost = @Cost, PartNumber = @PartNumber, PackageType = @PackageType, MountingTypeId = @MountingTypeId, DigiKeyPartNumber = @DigiKeyPartNumber, MouserPartNumber = @MouserPartNumber, Description = @Description, PartTypeId = @PartTypeId, ProjectId = @ProjectId, Keywords = @Keywords, DatasheetUrl = @DatasheetUrl, Location = @Location, BinNumber = @BinNumber, BinNumber2 = @BinNumber2, ProductUrl = @ProductUrl, ImageUrl = @ImageUrl, LowestCostSupplier = @LowestCostSupplier, LowestCostSupplierUrl = @LowestCostSupplierUrl, Manufacturer = @Manufacturer, ManufacturerPartNumber = @ManufacturerPartNumber WHERE PartId = @PartId AND (@UserId IS NULL OR UserId = @UserId);";
+                query = $"UPDATE Parts SET Quantity = @Quantity, LowStockThreshold = @LowStockThreshold, Cost = @Cost, PartNumber = @PartNumber, PackageType = @PackageType, MountingTypeId = @MountingTypeId, DigiKeyPartNumber = @DigiKeyPartNumber, MouserPartNumber = @MouserPartNumber, Description = @Description, PartTypeId = @PartTypeId, ProjectId = @ProjectId, Keywords = @Keywords, DatasheetUrl = @DatasheetUrl, Location = @Location, BinNumber = @BinNumber, BinNumber2 = @BinNumber2, ProductUrl = @ProductUrl, ImageUrl = @ImageUrl, LowestCostSupplier = @LowestCostSupplier, LowestCostSupplierUrl = @LowestCostSupplierUrl, Manufacturer = @Manufacturer, ManufacturerPartNumber = @ManufacturerPartNumber, ArrowPartNumber = @ArrowPartNumber WHERE PartId = @PartId AND (@UserId IS NULL OR UserId = @UserId);";
                 await ExecuteAsync<Part>(query, part);
             }
             else
@@ -481,7 +487,7 @@ VALUES (@Provider, @AccessToken, @RefreshToken, @DateCreatedUtc, @DateExpiresUtc
             var result = await SqlQueryAsync<Project>(query, project);
             if (result.Any())
             {
-                query = $"UPDATE Projects SET Name = @Name, Description = @Description, Location = @Location, Color = @Color WHERE ProjectId = @ProjectId AND (@UserId IS NULL OR UserId = @UserId);";
+                query = $"UPDATE Projects SET Name = @Name, Description = @Description, Location = @Location, Color = @Color, DateModifiedUtc = @DateModifiedUtc, Notes = @Notes WHERE ProjectId = @ProjectId AND (@UserId IS NULL OR UserId = @UserId);";
                 await ExecuteAsync<Project>(query, project);
             }
             else
@@ -826,7 +832,8 @@ CASE WHEN @OrderBy = 'PartName' THEN PartName ELSE NULL END {sortDirection},
 CASE WHEN @OrderBy = 'Notes' THEN Notes ELSE NULL END {sortDirection}, 
 CASE WHEN @OrderBy = 'ReferenceId' THEN ReferenceId ELSE NULL END {sortDirection}, 
 CASE WHEN @OrderBy = 'DateCreatedUtc' THEN DateCreatedUtc ELSE NULL END {sortDirection},
-CASE WHEN @OrderBy = 'DateModifiedUtc' THEN DateModifiedUtc ELSE NULL END {sortDirection} 
+CASE WHEN @OrderBy = 'DateModifiedUtc' THEN DateModifiedUtc ELSE NULL END {sortDirection},
+CASE WHEN @OrderBy = 'QuantityAvailable' THEN QuantityAvailable ELSE NULL END {sortDirection}
 OFFSET {offsetRecords} ROWS FETCH NEXT {request.Results} ROWS ONLY;";
             var result = await SqlQueryAsync<ProjectPartAssignment>(query, new
             {
@@ -844,8 +851,8 @@ OFFSET {offsetRecords} ROWS FETCH NEXT {request.Results} ROWS ONLY;";
         {
             assignment.UserId = userContext?.UserId;
             var query =
-                $@"INSERT INTO ProjectPartAssignments (ProjectId, PartId, PcbId, PartName, Quantity, Notes, ReferenceId, UserId, DateCreatedUtc, DateModifiedUtc) 
-VALUES(@ProjectId, @PartId, @PcbId, @PartName, @Quantity, @Notes, @ReferenceId, @UserId, @DateCreatedUtc, @DateModifiedUtc);
+                $@"INSERT INTO ProjectPartAssignments (ProjectId, PartId, PcbId, PartName, Quantity, Notes, ReferenceId, UserId, DateCreatedUtc, DateModifiedUtc, QuantityAvailable) 
+VALUES(@ProjectId, @PartId, @PcbId, @PartName, @Quantity, @Notes, @ReferenceId, @UserId, @DateCreatedUtc, @DateModifiedUtc, @QuantityAvailable);
 ";
             return await InsertAsync<ProjectPartAssignment, long>(query, assignment, (x, key) => { x.ProjectPartAssignmentId = key; });
         }
@@ -858,7 +865,7 @@ VALUES(@ProjectId, @PartId, @PcbId, @PartName, @Quantity, @Notes, @ReferenceId, 
             var result = await SqlQueryAsync<ProjectPartAssignment>(query, assignment);
             if (result.Any())
             {
-                query = $"UPDATE ProjectPartAssignments SET ProjectId = @ProjectId, PartId = @PartId, PcbId = @PcbId, PartName = @PartName, Quantity = @Quantity, Notes = @Notes, ReferenceId = @ReferenceId, DateModifiedUtc = @DateModifiedUtc WHERE ProjectPartAssignmentId = @ProjectPartAssignmentId AND (@UserId IS NULL OR UserId = @UserId);";
+                query = $"UPDATE ProjectPartAssignments SET ProjectId = @ProjectId, PartId = @PartId, PcbId = @PcbId, PartName = @PartName, Quantity = @Quantity, Notes = @Notes, ReferenceId = @ReferenceId, DateModifiedUtc = @DateModifiedUtc, QuantityAvailable = @QuantityAvailable WHERE ProjectPartAssignmentId = @ProjectPartAssignmentId AND (@UserId IS NULL OR UserId = @UserId);";
                 await ExecuteAsync(query, assignment);
             }
             else
@@ -929,6 +936,65 @@ VALUES(@ProjectId, @PcbId, @UserId, @DateCreatedUtc);
             assignment.UserId = userContext?.UserId;
             var query = $"DELETE FROM ProjectPcbAssignments WHERE ProjectPcbAssignmentId = @ProjectPcbAssignmentId AND (@UserId IS NULL OR UserId = @UserId);";
             return await ExecuteAsync(query, assignment) > 0;
+        }
+
+        #endregion
+
+        #region BinnerDb V5
+
+        public async Task<PartSupplier> AddPartSupplierAsync (PartSupplier partSupplier, IUserContext? userContext)
+        {
+            partSupplier.UserId = userContext?.UserId;
+            var query =
+$@"INSERT INTO PartSuppliers (PartId, Name, SupplierPartNumber, Cost, QuantityAvailable, MinimumOrderQuantity, ProductUrl, ImageUrl, DateCreatedUtc, DateModifiedUtc, UserId) 
+VALUES(@PartId, @Name, @SupplierPartNumber, @Cost, @QuantityAvailable, @MinimumOrderQuantity, @ProductUrl, @ImageUrl, @DateCreatedUtc, @DateModifiedUtc, @UserId);
+";
+            return await InsertAsync<PartSupplier, long>(query, partSupplier, (x, key) => { x.PartSupplierId = key; });
+        }
+
+        public async Task<PartSupplier?> GetPartSupplierAsync(long partSupplierId, IUserContext? userContext)
+        {
+            var query = $"SELECT * FROM PartSuppliers WHERE PartSupplierId = @PartSupplierId AND (@UserId IS NULL OR UserId = @UserId);";
+            var result = await SqlQueryAsync<PartSupplier>(query, new { PartSupplierId = partSupplierId, UserId = userContext?.UserId });
+            return result.FirstOrDefault();
+        }
+
+        public async Task<ICollection<PartSupplier>> GetPartSuppliersAsync(IUserContext? userContext)
+        {
+            var query = $@"SELECT * FROM PartSuppliers WHERE (@UserId IS NULL OR UserId = @UserId);";
+            var result = await SqlQueryAsync<PartSupplier>(query, new { UserId = userContext?.UserId });
+            return result;
+        }
+
+        public async Task<ICollection<PartSupplier>> GetPartSuppliersAsync(long partId, IUserContext? userContext)
+        {
+            var query = $@"SELECT * FROM PartSuppliers WHERE PartId = @PartId AND (@UserId IS NULL OR UserId = @UserId);";
+            var result = await SqlQueryAsync<PartSupplier>(query, new { PartId = partId, UserId = userContext?.UserId });
+            return result;
+        }
+
+        public async Task<bool> DeletePartSupplierAsync(PartSupplier partSupplier, IUserContext? userContext)
+        {
+            partSupplier.UserId = userContext?.UserId;
+            var query = $"DELETE FROM PartSuppliers WHERE PartSupplierId = @PartSupplierId AND (@UserId IS NULL OR UserId = @UserId);";
+            return await ExecuteAsync(query, partSupplier) > 0;
+        }
+
+        public async Task<PartSupplier> UpdatePartSupplierAsync(PartSupplier partSupplier, IUserContext? userContext)
+        {
+            partSupplier.UserId = userContext?.UserId;
+            var query = $"SELECT PartSupplierId FROM PartSuppliers WHERE PartSupplierId = @PartSupplierId AND (@UserId IS NULL OR UserId = @UserId);";
+            var result = await SqlQueryAsync<PartSupplier>(query, partSupplier);
+            if (result.Any())
+            {
+                query = $"UPDATE PartSuppliers SET PartId = @PartId, Name = @Name, SupplierPartNumber = @SupplierPartNumber, Cost = @Cost, QuantityAvailable = @QuantityAvailable, MinimumOrderQuantity = @MinimumOrderQuantity, ProductUrl = @ProductUrl, ImageUrl = @ImageUrl, DateModifiedUtc = @DateModifiedUtc WHERE PartSupplierId = @PartSupplierId AND (@UserId IS NULL OR UserId = @UserId);";
+                await ExecuteAsync(query, partSupplier);
+            }
+            else
+            {
+                throw new StorageProviderException(nameof(MySqlStorageProvider), $"Record not found for {nameof(PartSupplier)} = {partSupplier.PartSupplierId}");
+            }
+            return partSupplier;
         }
 
         #endregion

@@ -41,21 +41,25 @@ namespace Binner.StorageProvider.MySql
                 var tablePostSchemaText = new List<string>();
                 foreach (var columnProp in columnProps)
                 {
-                    tableSchema.Add(GetColumnSchema(columnProp, out var postSchemaText, out var preTableText));
+                    tableSchema.Add(GetColumnSchema(columnProp, false, out var postSchemaText, out var preTableText));
                     tablePostSchemaText.AddRange(postSchemaText);
                     if (preTableText.Any())
                         tableSchemas.Add(string.Join("\r\n", preTableText));
                 }
                 tableSchemas.Add(CreateTableIfNotExists(tableProperty.Name, string.Join(",\r\n", tableSchema), tablePostSchemaText));
+                // also add schema new columns added
+                foreach (var columnProp in columnProps)
+                    tableSchemas.Add(CreateTableColumnIfNotExists(tableProperty.Name, columnProp));
             }
             return tableSchemas;
         }
 
-        private string GetColumnSchema(ExtendedProperty prop, out List<string> postSchemaText, out List<string> preTableText)
+        private string GetColumnSchema(ExtendedProperty prop, bool includeDefaultValue, out List<string> postSchemaText, out List<string> preTableText)
         {
             postSchemaText = new List<string>();
             preTableText = new List<string>();
             var columnSchema = "";
+            var defaultValue = "";
             var propExtendedType = prop.Type;
             var maxLength = GetMaxLength(prop);
             if (propExtendedType.IsCollection)
@@ -65,6 +69,7 @@ namespace Binner.StorageProvider.MySql
                     columnSchema = $"{prop.Name} text";
                 else
                     columnSchema = $"{prop.Name} varchar({maxLength})";
+                defaultValue = "''";
             }
             else
             {
@@ -72,48 +77,61 @@ namespace Binner.StorageProvider.MySql
                 {
                     case var p when p.NullableBaseType == typeof(byte):
                         columnSchema = $"{prop.Name} tinyint";
+                        defaultValue = "0";
                         break;
                     case var p when p.NullableBaseType == typeof(short):
                         columnSchema = $"{prop.Name} smallint";
+                        defaultValue = "0";
                         break;
                     case var p when p.NullableBaseType == typeof(int):
                         columnSchema = $"{prop.Name} integer";
+                        defaultValue = "0";
                         break;
                     case var p when p.NullableBaseType == typeof(long):
                         columnSchema = $"{prop.Name} bigint";
+                        defaultValue = "0";
                         break;
                     case var p when p.NullableBaseType == typeof(double):
                         columnSchema = $"{prop.Name} float";
+                        defaultValue = "0";
                         break;
                     case var p when p.NullableBaseType == typeof(decimal):
                         columnSchema = $"{prop.Name} decimal(18, 3)";
+                        defaultValue = "0";
                         break;
                     case var p when p.NullableBaseType == typeof(string):
                         if (maxLength == "max")
                             columnSchema = $"{prop.Name} text";
                         else
                             columnSchema = $"{prop.Name} varchar({maxLength})";
+                        defaultValue = "''";
                         break;
                     case var p when p.NullableBaseType == typeof(DateTime):
                         columnSchema = $"{prop.Name} timestamp";
+                        defaultValue = "NOW()";
                         break;
                     case var p when p.NullableBaseType == typeof(TimeSpan):
                         columnSchema = $"{prop.Name} time";
+                        defaultValue = "NOW()";
                         break;
                     case var p when p.NullableBaseType == typeof(Guid):
                         columnSchema = $"{prop.Name} varchar(36)";
+                        defaultValue = "UUID()";
                         break;
                     case var p when p.NullableBaseType == typeof(bool):
                         columnSchema = $"{prop.Name} tinyint";
+                        defaultValue = "0";
                         break;
                     case var p when p.NullableBaseType == typeof(byte[]):
                         if (maxLength == "max")
                             columnSchema = $"{prop.Name} varbinary(65535)";
                         else
                             columnSchema = $"{prop.Name} varbinary({maxLength})";
+                        defaultValue = "0x00";
                         break;
                     case var p when p.NullableBaseType.IsEnum:
                         columnSchema = $"{prop.Name} integer";
+                        defaultValue = "0";
                         break;
                     default:
                         throw new InvalidOperationException($"Unsupported data type: {prop.Type}");
@@ -122,12 +140,20 @@ namespace Binner.StorageProvider.MySql
             if (prop.CustomAttributes.ToList().Any(x => x.AttributeType == typeof(KeyAttribute)))
             {
                 if (propExtendedType.NullableBaseType != typeof(string) && propExtendedType.NullableBaseType.IsValueType)
-                    columnSchema = columnSchema + " AUTO_INCREMENT";
-                columnSchema = columnSchema + " NOT NULL";
+                    columnSchema += " AUTO_INCREMENT";
+                columnSchema += " NOT NULL";
+                if (includeDefaultValue)
+                    columnSchema += $" DEFAULT {defaultValue}";
                 postSchemaText.Add($",\r\nPRIMARY KEY({prop.Name})");
             }
-            else if (propExtendedType.Type != typeof(string) && !propExtendedType.IsNullable && !propExtendedType.IsCollection)
-                columnSchema = columnSchema + " NOT NULL";
+            else if (propExtendedType.Type != typeof(string) && !propExtendedType.IsNullable &&
+                     !propExtendedType.IsCollection)
+            {
+                columnSchema += " NOT NULL";
+                if (includeDefaultValue)
+                    columnSchema += $" DEFAULT {defaultValue}";
+            }
+
             return columnSchema;
         }
 
@@ -142,6 +168,12 @@ namespace Binner.StorageProvider.MySql
                     maxLength = value.ToString();
             }
             return maxLength;
+        }
+
+        private string CreateTableColumnIfNotExists(string tableName, ExtendedProperty columnProp)
+        {
+            var columnSchema = GetColumnSchema(columnProp, true, out var _, out var _);
+            return $@"ALTER TABLE {tableName} ADD COLUMN IF NOT EXISTS {columnSchema};"; // as of Maria DB 10.219
         }
 
         private string CreateTableIfNotExists(string tableName, string tableSchema, List<string> postSchemaText)
