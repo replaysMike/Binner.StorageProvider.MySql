@@ -140,17 +140,23 @@ namespace Binner.StorageProvider.MySql
             if (prop.CustomAttributes.ToList().Any(x => x.AttributeType == typeof(KeyAttribute)))
             {
                 if (propExtendedType.NullableBaseType != typeof(string) && propExtendedType.NullableBaseType.IsValueType)
+                {
                     columnSchema += " AUTO_INCREMENT";
-                columnSchema += " NOT NULL";
-                if (includeDefaultValue)
-                    columnSchema += $" DEFAULT {defaultValue}";
+                    columnSchema += " NOT NULL";
+                }
+                else
+                {
+                    columnSchema += " NOT NULL";
+                    if (includeDefaultValue && !string.IsNullOrEmpty(defaultValue))
+                        columnSchema += $" DEFAULT {defaultValue}";
+                }
                 postSchemaText.Add($",\r\nPRIMARY KEY({prop.Name})");
             }
             else if (propExtendedType.Type != typeof(string) && !propExtendedType.IsNullable &&
                      !propExtendedType.IsCollection)
             {
                 columnSchema += " NOT NULL";
-                if (includeDefaultValue)
+                if (includeDefaultValue && !string.IsNullOrEmpty(defaultValue))
                     columnSchema += $" DEFAULT {defaultValue}";
             }
 
