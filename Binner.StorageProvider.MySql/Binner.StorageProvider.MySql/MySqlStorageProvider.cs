@@ -530,8 +530,8 @@ VALUES(@FileName, @OriginalFileName, @StoredFileType, @PartId, @FileLength, @Crc
 
         public async Task<ICollection<StoredFile>> GetStoredFilesAsync(long partId, StoredFileType? fileType, IUserContext? userContext)
         {
-            var query = $@"SELECT * FROM StoredFiles WHERE PartId = @PartId AND (@UserId IS NULL OR UserId = @UserId);";
-            var result = await SqlQueryAsync<StoredFile>(query, new { PartId = partId, UserId = userContext?.UserId });
+            var query = $@"SELECT * FROM StoredFiles WHERE PartId = @PartId AND (@StoredFileType IS NULL OR StoredFileType = @StoredFileType) AND (@UserId IS NULL OR UserId = @UserId);";
+            var result = await SqlQueryAsync<StoredFile>(query, new { PartId = partId, StoredFileType = fileType, UserId = userContext?.UserId });
             return result;
         }
 
