@@ -24,7 +24,7 @@ namespace Binner.StorageProvider.MySql
             _config = new MySqlStorageConfiguration(config);
             try
             {
-                GenerateDatabaseIfNotExistsAsync<BinnerDbV5>()
+                GenerateDatabaseIfNotExistsAsync<BinnerDbV6>()
                     .GetAwaiter()
                     .GetResult();
             }
@@ -41,7 +41,7 @@ namespace Binner.StorageProvider.MySql
         public async Task<IBinnerDb> GetDatabaseAsync(IUserContext? userContext)
         {
             var parts = await GetPartsAsync();
-            return new BinnerDbV5
+            return new BinnerDbV6
             {
                 OAuthCredentials = await GetOAuthCredentialAsync(userContext),
                 Parts = parts,
@@ -688,8 +688,8 @@ VALUES(@AuthorizationCode, @AuthorizationReceived, @Error, @ErrorDescription, @P
         {
             pcb.UserId = userContext?.UserId;
             var query =
-                $@"INSERT INTO Pcbs (Name, Description, SerialNumberFormat, LastSerialNumber, UserId, DateCreatedUtc, DateModifiedUtc) 
-VALUES(@Name, @Description, @SerialNumberFormat, @LastSerialNumber, @UserId, @DateCreatedUtc, @DateModifiedUtc);
+                $@"INSERT INTO Pcbs (Name, Description, SerialNumberFormat, LastSerialNumber, UserId, DateCreatedUtc, DateModifiedUtc, Quantity, Cost) 
+VALUES(@Name, @Description, @SerialNumberFormat, @LastSerialNumber, @UserId, @DateCreatedUtc, @DateModifiedUtc, @Quantity, @Cost);
 ";
             return await InsertAsync<Pcb, long>(query, pcb, (x, key) => { x.PcbId = key; });
         }
@@ -702,7 +702,7 @@ VALUES(@Name, @Description, @SerialNumberFormat, @LastSerialNumber, @UserId, @Da
             var result = await SqlQueryAsync<Pcb>(query, pcb);
             if (result.Any())
             {
-                query = $"UPDATE Pcbs SET Name = @Name, Description = @Description, SerialNumberFormat = @SerialNumberFormat, LastSerialNumber = @LastSerialNumber, DateModifiedUtc = @DateModifiedUtc WHERE PcbId = @PcbId AND (@UserId IS NULL OR UserId = @UserId);";
+                query = $"UPDATE Pcbs SET Name = @Name, Description = @Description, SerialNumberFormat = @SerialNumberFormat, LastSerialNumber = @LastSerialNumber, DateModifiedUtc = @DateModifiedUtc, Quantity = @Quantity, Cost = @Cost WHERE PcbId = @PcbId AND (@UserId IS NULL OR UserId = @UserId);";
                 await ExecuteAsync(query, pcb);
             }
             else
@@ -851,8 +851,8 @@ OFFSET {offsetRecords} ROWS FETCH NEXT {request.Results} ROWS ONLY;";
         {
             assignment.UserId = userContext?.UserId;
             var query =
-                $@"INSERT INTO ProjectPartAssignments (ProjectId, PartId, PcbId, PartName, Quantity, Notes, ReferenceId, UserId, DateCreatedUtc, DateModifiedUtc, QuantityAvailable) 
-VALUES(@ProjectId, @PartId, @PcbId, @PartName, @Quantity, @Notes, @ReferenceId, @UserId, @DateCreatedUtc, @DateModifiedUtc, @QuantityAvailable);
+                $@"INSERT INTO ProjectPartAssignments (ProjectId, PartId, PcbId, PartName, Quantity, Notes, ReferenceId, UserId, DateCreatedUtc, DateModifiedUtc, QuantityAvailable, SchematicReferenceId, CustomDescription) 
+VALUES(@ProjectId, @PartId, @PcbId, @PartName, @Quantity, @Notes, @ReferenceId, @UserId, @DateCreatedUtc, @DateModifiedUtc, @QuantityAvailable, @SchematicReferenceId, @CustomDescription);
 ";
             return await InsertAsync<ProjectPartAssignment, long>(query, assignment, (x, key) => { x.ProjectPartAssignmentId = key; });
         }
@@ -865,7 +865,7 @@ VALUES(@ProjectId, @PartId, @PcbId, @PartName, @Quantity, @Notes, @ReferenceId, 
             var result = await SqlQueryAsync<ProjectPartAssignment>(query, assignment);
             if (result.Any())
             {
-                query = $"UPDATE ProjectPartAssignments SET ProjectId = @ProjectId, PartId = @PartId, PcbId = @PcbId, PartName = @PartName, Quantity = @Quantity, Notes = @Notes, ReferenceId = @ReferenceId, DateModifiedUtc = @DateModifiedUtc, QuantityAvailable = @QuantityAvailable WHERE ProjectPartAssignmentId = @ProjectPartAssignmentId AND (@UserId IS NULL OR UserId = @UserId);";
+                query = $"UPDATE ProjectPartAssignments SET ProjectId = @ProjectId, PartId = @PartId, PcbId = @PcbId, PartName = @PartName, Quantity = @Quantity, Notes = @Notes, ReferenceId = @ReferenceId, DateModifiedUtc = @DateModifiedUtc, QuantityAvailable = @QuantityAvailable, SchematicReferenceId = @SchematicReferenceId, CustomDescription = @CustomDescription WHERE ProjectPartAssignmentId = @ProjectPartAssignmentId AND (@UserId IS NULL OR UserId = @UserId);";
                 await ExecuteAsync(query, assignment);
             }
             else
