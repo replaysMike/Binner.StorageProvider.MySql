@@ -1133,6 +1133,10 @@ VALUES(@PartId, @Name, @SupplierPartNumber, @Cost, @QuantityAvailable, @MinimumO
                     return new Guid(obj.ToString() ?? string.Empty);
                 case var p when p.Type == typeof(bool):
                     return (int)(sbyte)obj > 0;
+                case var f when f.Type == typeof(double):
+                    return Convert.ToDouble(obj);
+                case var f when f.NullableBaseType == typeof(double):
+                    return obj != null ? Convert.ToDouble(obj) : null;
                 default:
                     return obj;
             }
